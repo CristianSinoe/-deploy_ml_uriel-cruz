@@ -36,7 +36,7 @@ jobs:
       - name: Ensure data dir
         run: mkdir -p data
 
-      # ⬇️ Solo este cambio: nombre del archivo que espera tu train.py
+      # Solo este cambio: nombre del archivo que espera tu train.py
       - name: Download dataset
         run: curl -L "${{ github.event.client_payload.dataseturl }}" -o data/healthcare-dataset-stroke-data.csv
 
