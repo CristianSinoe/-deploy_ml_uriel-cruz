@@ -1,0 +1,68 @@
+name: Modelops deploy
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  repository_dispatch:
+    types: [ ml_ci_cd ]
+
+jobs:
+  ml_ci_cd:
+    runs-on: ubuntu-latest
+    environment: deploy_ml_diabetes
+    strategy:
+      matrix:
+        python-version: [ "3.8" ]
+    env:
+      TAG_SHA: ${{ github.event.client_payload.sha || github.sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Python version
+        run: python --version
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Ensure data dir
+        run: mkdir -p data
+
+      # ⬇️ Solo este cambio: nombre del archivo que espera tu train.py
+      - name: Download dataset
+        run: curl -L "${{ github.event.client_payload.dataseturl }}" -o data/healthcare-dataset-stroke-data.csv
+
+      - name: Show dataset head
+        run: head -n 5 data/healthcare-dataset-stroke-data.csv
+
+      - name: Resolve image tag
+        run: echo "Using image tag:$TAG_SHA"
+
+      - name: Train model
+        run: python model/train.py
+
+      - name: Docker build (sha tag)
+        run: docker build -t "${{ secrets.DOCKER_USER }}/${{ secrets.MODEL_NAME }}:$TAG_SHA" .
+
+      - name: Show images
+        run: docker images | head -n 20
+
+      - name: Docker login
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USER }}" --password-stdin
+
+      - name: Docker push (sha)
+        run: docker push "${{ secrets.DOCKER_USER }}/${{ secrets.MODEL_NAME }}:$TAG_SHA"
+
+      - name: Docker tag latest
+        run: docker tag "${{ secrets.DOCKER_USER }}/${{ secrets.MODEL_NAME }}:$TAG_SHA" "${{ secrets.DOCKER_USER }}/${{ secrets.MODEL_NAME }}:latest"
+
+      - name: Docker push latest
+        run: docker push "${{ secrets.DOCKER_USER }}/${{ secrets.MODEL_NAME }}:latest"

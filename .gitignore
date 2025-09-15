@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+
+# Datos y modelos grandes (los genera CI)
+data/*.csv
+model/*.joblib
+
+# Entornos locales
+.venv/
+env/
+ia-env/
