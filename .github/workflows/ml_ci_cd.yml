@@ -30,7 +30,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Prepare data (download to data/train.csv)
+      - name: Prepare data (download -> data/train.csv)
+        shell: bash
         run: |
           set -e
           mkdir -p data model
@@ -47,27 +48,35 @@ jobs:
           python model/train.py --csv data/train.csv --out model/diabetes-model-v1.joblib
           ls -lh model/
 
-      - name: Resolve tags and image name
+      - name: Resolve IMAGE_NAME and TAG_SHA
         shell: bash
         run: |
-          # TAG_SHA: usa client_payload.sha si viene; si no, github.sha
+          # IMAGE_NAME (repo base único en Docker Hub)
+          if [ -n "${{ github.event.client_payload.MODEL_NAME }}" ]; then
+            echo "IMAGE_NAME=${{ github.event.client_payload.MODEL_NAME }}" >> $GITHUB_ENV
+          elif [ -n "${{ secrets.MODEL_NAME }}" ]; then
+            echo "IMAGE_NAME=${{ secrets.MODEL_NAME }}" >> $GITHUB_ENV
+          else
+            # fallback sensato
+            echo "IMAGE_NAME=sinoeruiz/diabetes-api" >> $GITHUB_ENV
+          fi
+
+          # Validar que tenga namespace (user/repo)
+          if [[ "$(grep ^IMAGE_NAME= $GITHUB_ENV | cut -d= -f2)" != */* ]]; then
+            echo "IMAGE_NAME debe incluir namespace (ej. user/repo)"; cat $GITHUB_ENV; exit 1
+          fi
+
+          # TAG_SHA (tag humano de la variante) o github.sha
           if [ -n "${{ github.event.client_payload.sha }}" ]; then
             echo "TAG_SHA=${{ github.event.client_payload.sha }}" >> $GITHUB_ENV
           else
             echo "TAG_SHA=${{ github.sha }}" >> $GITHUB_ENV
           fi
 
-          # IMAGE_NAME: usa client_payload.MODEL_NAME si viene; si no, secrets.MODEL_NAME
-          if [ -n "${{ github.event.client_payload.MODEL_NAME }}" ]; then
-            echo "IMAGE_NAME=${{ github.event.client_payload.MODEL_NAME }}" >> $GITHUB_ENV
-          else
-            echo "IMAGE_NAME=${{ secrets.MODEL_NAME }}" >> $GITHUB_ENV
-          fi
+          echo "IMAGE_NAME=$(grep ^IMAGE_NAME= $GITHUB_ENV | cut -d= -f2)"
+          echo "TAG_SHA=$(grep ^TAG_SHA= $GITHUB_ENV | cut -d= -f2)"
 
-          echo "IMAGE_NAME=$(cat $GITHUB_ENV | grep IMAGE_NAME | cut -d= -f2)"
-          echo "TAG_SHA=$(cat $GITHUB_ENV | grep TAG_SHA | cut -d= -f2)"
-
-      - name: Docker build (TAG_SHA, github.sha, latest)
+      - name: Docker build (variant tag + commit tag + latest)
         run: |
           echo "Build: $IMAGE_NAME"
           docker build \
